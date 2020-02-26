@@ -15,11 +15,6 @@ bot = telebot.TeleBot(token)
 url = 'https://maps.googleapis.com/maps/api/distancematrix/json'
 API_KEY = os.getenv('API_KEY')
 
-
-# engine = create_engine('sqlite:///' + \
-#                     os.path.join(os.path.abspath(os.path.dirname(__file__)), 'data.sqlite'), \
-#                     connect_args={'check_same_thread': False}, echo=False)
-# engine = create_engine('postgresql://postgres:aMhKuJqhbzLrRe93ypCB@localhost/telegram_bot_best_places')
 engine = create_engine(os.getenv('DATABASE_URL'))
 
 Base = declarative_base()
@@ -101,6 +96,7 @@ def callback_handler(callback_query):
         bot.edit_message_reply_markup(chat_id=message.chat.id, \
                                     message_id=message.message_id, reply_markup=None)
         bot.send_message(message.chat.id, text='Добавление нового места отменено.')
+        PLACES = defaultdict(lambda: {})
         update_state(message, START)
     elif text == 'Пропустить':
         bot.edit_message_reply_markup(chat_id=message.chat.id, \
@@ -121,6 +117,7 @@ def callback_handler(callback_query):
         session.add(place)
         session.commit()
         bot.send_message(message.chat.id, text="Новое место добалено!")
+        PLACES = defaultdict(lambda: {})
         update_state(message, START)
 
 
@@ -258,10 +255,5 @@ def show_place(message):
 
 if __name__ == '__main__':
     bot.polling()
-    # while True:
-    #     try:
-    #         bot.polling(none_stop=True, timeout=10)
-    #     except Exception as ex:
-    #         print(ex.args)
-    #         time.sleep(3)
+
 
