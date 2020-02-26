@@ -1,0 +1,4 @@
+*.sqlite
+files
+venv
+token+api.txt
