@@ -51,7 +51,6 @@ PLACES = defaultdict(lambda: {})
 def find_closest_places(location, places):
     origins = [f'{location.latitude},{location.longitude}']
     origins = '|'.join(origins)
-    # destinations = ['56.837365, 60.535575', '59.876933,11.329182', '53.455006,-2.260218', '40.363690,-3.610083', '40.738212,-73.995260']
     destinations = [f'{place.latitude},{place.longitude}' for place in places]
     destinations = '|'.join(destinations)
     parameters = {'origins': origins, 'destinations': destinations, 'key': API_KEY}
@@ -80,6 +79,10 @@ def update_place(message, key, value):
     PLACES[message.chat.id][key] = value
 
 
+def reset_place(message):
+    PLACES[message.chat.id] = {}
+
+
 def create_keyboard(buttons_list=[]):
     keyboard = telebot.types.InlineKeyboardMarkup(row_width=len(buttons_list))
     buttons = [telebot.types.InlineKeyboardButton(text=button, callback_data=button) \
@@ -96,7 +99,7 @@ def callback_handler(callback_query):
         bot.edit_message_reply_markup(chat_id=message.chat.id, \
                                     message_id=message.message_id, reply_markup=None)
         bot.send_message(message.chat.id, text='Добавление нового места отменено.')
-        PLACES = defaultdict(lambda: {})
+        reset_place(message)
         update_state(message, START)
     elif text == 'Пропустить':
         bot.edit_message_reply_markup(chat_id=message.chat.id, \
@@ -117,7 +120,7 @@ def callback_handler(callback_query):
         session.add(place)
         session.commit()
         bot.send_message(message.chat.id, text="Новое место добалено!")
-        PLACES = defaultdict(lambda: {})
+        reset_place(message)
         update_state(message, START)
 
 
