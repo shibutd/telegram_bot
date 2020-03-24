@@ -1,4 +1,11 @@
+__pycache__/
+.ipynb_checkpoints/
+files/
+venv/
+*.py[cod]
 *.sqlite
-files
-venv
+*.ipynb
+Procfile
 token+api.txt
+runtime.txt
+
