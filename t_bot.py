@@ -1,23 +1,21 @@
 import os
 import time
-import requests
 import telebot
 from collections import defaultdict
 from models import session, Place
+from distance import find_closest_places
+
 
 # Activate proxy to get access to telegram if it is blocked, requires
 # running Tor Browser, typically Tor listens for SOCKS connections on port 9150
 # telebot.apihelper.proxy = {'https': 'socks5://127.0.0.1:9150'}
 
 # Creates a bot and gives it unique token
-token = os.getenv('TELEGRAM_TOKEN', 'secret-token')
-bot = telebot.TeleBot(token)
+TOKEN = os.getenv('TELEGRAM_TOKEN', 'secret-token')
+bot = telebot.TeleBot(TOKEN)
 
-# Settings for access to the service Google Maps Distance Matrix API
-url = 'https://maps.googleapis.com/maps/api/distancematrix/json'
-API_KEY = os.getenv('DISTANCEMATRIX_API_KEY', 'secret-api')
-
-message_data_types = ['text', 'audio', 'document', 'photo', 'sticker',
+# Message all possible data types
+MESSAGE_DATA_TYPES = ['text', 'audio', 'document', 'photo', 'sticker',
                       'video', 'location', 'contact', 'new_chat_participant',
                       'left_chat_participant', 'new_chat_title', 'new_chat_photo',
                       'delete_chat_photo', 'group_chat_created']
@@ -26,7 +24,7 @@ message_data_types = ['text', 'audio', 'document', 'photo', 'sticker',
 START, ADDRESS, LOCATION, IMAGE, CONFIRMATION = range(5)
 USER_STATE = defaultdict(lambda: START)
 
-# Dictionary for storing data while survey before saving to database
+# Dictionary for storing data about place while survey before saving to database
 PLACES = defaultdict(lambda: {})
 
 
@@ -58,6 +56,7 @@ def reset_place(message):
 
 
 def create_keyboard(buttons_list=[]):
+    '''Creates keyboard'''
     keyboard = telebot.types.InlineKeyboardMarkup(
         row_width=len(buttons_list))
     buttons = [telebot.types.InlineKeyboardButton(
@@ -75,6 +74,7 @@ def callback_handler(callback_query):
 
     # User presses "Cancel" button
     if text == 'Отмена':
+
         # Remove the buttons
         bot.edit_message_reply_markup(
             chat_id=message.chat.id,
@@ -104,12 +104,14 @@ def callback_handler(callback_query):
             message_id=message.message_id,
             reply_markup=None
         )
+
         # Check if user already have 10 saved places.
         # If he has delete one place, the first one that he saved
         places = session.query(Place).filter_by(
             user=message.chat.id).order_by(Place.id).all()
         if len(places) == 10:
             session.delete(places[0])
+
         # Save place from "PLACE ditionary" to database
         place_dict = get_place(message)
         place = Place(
@@ -129,7 +131,7 @@ def callback_handler(callback_query):
 
 @bot.message_handler(commands=['start', 'help'])
 def command_help(message):
-    '''Create initial and help messages'''
+    '''Handles "start" and "help" commands'''
     text = '''Привет! Я создан для того, чтобы запоминать места, \
 которые ты возможно захочешь посетить позже. Доступные команды:
 /add – запомнить место;
@@ -139,47 +141,9 @@ def command_help(message):
     bot.send_message(message.chat.id, text=text)
 
 
-def find_closest_places(location, places):
-    '''Using Google Maps Distance Matrix API to find distances
-    between given location and user's saved in database places_numbers
-    that are near than 500 meters of location.
-
-    Arguments:
-        location {JSON} -- location given by user
-        places {SQLAlchemy objects} -- user's places from database
-
-    Returns:
-        Number of indicies of places that are closer than 500 meters to
-        location given by user.
-    '''
-    # Format location given by user
-    origins = [f'{location.latitude},{location.longitude}']
-    origins = '|'.join(origins)
-    # Format user's saved locations from database
-    destinations = [f'{place.latitude},{place.longitude}' for place in places]
-    destinations = '|'.join(destinations)
-    # Making reqest to Distance Matrix API, requests to:
-    # http://maps.googleapis.com/maps/api/distancematrix/outputFormat?parameters
-    # parameters: origins = 41.43206,-81.38992, destinations = 41.43206,-81.38992
-    parameters = {'origins': origins, 'destinations': destinations, 'key': API_KEY}
-    try:
-        response = requests.get(url, params=parameters, timeout=5)
-        response.raise_for_status()
-    except (requests.exceptions.Timeout, requests.HTTPError):
-        return []
-    distances = response.json()['rows'][0]['elements']
-
-    # Determine saved places that are closer than 500 meters to location
-    # given by user and return its indicies
-    closer = []
-    for idx, distance in enumerate(distances):
-        if distance.get('status') == 'OK' and distance['distance']['value'] < 500:
-            closer.append(idx)
-    return closer
-
-
 def print_places(chat_id, saved_places, places_numbers):
-    '''Displays message with data (name, locationn, image) about user's places.
+    '''Send to chat messages with data (name, locationn, image)
+    about user's places.
 
     Arguments:
         chat_id {int} -- chat's id
@@ -215,9 +179,10 @@ def check_closest_places(message):
         print_places(message.chat.id, saved_places, closest_places)
 
 
-@bot.message_handler(func=lambda message: get_state(message) == START, commands=['add'])
+@bot.message_handler(func=lambda message: get_state(message) == START,
+                     commands=['add'])
 def add_place(message):
-    '''Handles "add" command, start survey user to add new place
+    '''Handles "add" command, start user's survey to add new place
     to database, changes state to ADDRESS
     '''
     keyboard = create_keyboard(['Отмена'])
@@ -235,12 +200,16 @@ def add_address(message):
     '''Get address name from user, changes state to LOCATION'''
     update_place(message, 'address', message.text)
     keyboard = create_keyboard(['Отмена'])
-    bot.send_message(message.chat.id, text='Укажи место на карте.', reply_markup=keyboard)
+    bot.send_message(
+        message.chat.id,
+        text='Укажи место на карте.',
+        reply_markup=keyboard
+    )
     update_state(message, LOCATION)
 
 
 @bot.message_handler(func=lambda message: get_state(message) == ADDRESS,
-                     content_types=[type for type in message_data_types
+                     content_types=[type for type in MESSAGE_DATA_TYPES
                                     if type != 'text'])
 def add_address_error(message):
     '''Displays error message if user's input is not "Adress name"'''
@@ -263,7 +232,7 @@ def add_location(message):
 
 
 @bot.message_handler(func=lambda message: get_state(message) == LOCATION,
-                     content_types=[type for type in message_data_types
+                     content_types=[type for type in MESSAGE_DATA_TYPES
                                     if type != 'location'])
 def add_location_error(message):
     '''Displays error message if user's input is not "Location"'''
@@ -280,7 +249,7 @@ def add_image(message):
 
 
 @bot.message_handler(func=lambda message: get_state(message) == IMAGE,
-                     content_types=[type for type in message_data_types
+                     content_types=[type for type in MESSAGE_DATA_TYPES
                                     if type != 'photo'])
 def add_image_error(message):
     '''Displays error message if user's input is not "Image"'''
@@ -323,7 +292,8 @@ def list_places(message):
     if places:
         enumerated_addresses = [f'{num}. {place.address}'
                                 for num, place in enumerate(places, 1)]
-        text = 'Вот список сохраненных мест:\n' + ';\n'.join(enumerated_addresses) + '.'
+        text = 'Вот список сохраненных мест:\n' + \
+            ';\n'.join(enumerated_addresses) + '.'
         bot.send_message(
             message.chat.id,
             text=text + '\nЧтобы узнать больше о месте: /x, где x - номер места.'
